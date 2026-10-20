@@ -1,0 +1,17 @@
+[package]
+name = "factoring_escrow"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+invoice_registry = { path = "../invoice_registry" }
+liquidity_pool = { path = "../liquidity_pool" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
