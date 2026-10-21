@@ -1,58 +1,64 @@
-# Contributing to LiquiVault Smart Contracts (`liquivault-contracts`)
+# LiquiVault Contribution Guide
 
-Thank you for your interest in contributing to **LiquiVault**, an institutional-grade decentralized trade invoice factoring and liquidity protocol on **Stellar Soroban**! We actively welcome contributors participating in **Drips Wave** and the broader Stellar ecosystem.
-
----
-
-## Prerequisites
-
-- **Rust Toolchain**: `rustup` with stable compiler (`>= 1.78`)
-- **WASM Target**: `rustup target add wasm32-unknown-unknown`
-- **Stellar CLI**: `cargo install --locked stellar-cli --features opt`
-
----
+We welcome contributions from the community! Below is a quick start guide to get you up and running.
 
 ## Getting Started
-
-1. **Fork & Clone the Repository**
+1. **Fork the repository** on GitHub.
+2. **Clone your fork**:
    ```bash
-   git clone https://github.com/<your-username>/liquivault-contracts.git
-   cd liquivault-contracts
+   git clone https://github.com/<your‑username>/<repo>.git
+   cd <repo>
    ```
-
-2. **Create a Feature Branch**
-   Use a descriptive branch name referencing the issue number:
+3. **Create a new branch** for your work:
    ```bash
-   git checkout -b feat/issue-12-multi-currency-support
+   git checkout -b my-feature
    ```
+4. **Install dependencies**:
+   - **Contracts** (`liquivault-contracts`):
+     ```bash
+     rustup component add rustfmt clippy
+     cargo build
+     ```
+   - **SDK** (`liquivault-sdk`):
+     ```bash
+     npm ci
+     ```
+   - **Frontend** (`liquivault-frontend`):
+     ```bash
+     npm ci
+     cp .env.example .env.local   # adjust as needed
+     ```
 
-3. **Run the Workspace Test Suite**
-   ```bash
-   cargo test --workspace
-   ```
+## Development Workflow
+- **Run tests**
+  - Contracts: `cargo test --workspace`
+  - SDK: `npm test`
+  - Frontend: `npm test`
+- **Code formatting & linting**
+  - Contracts: `cargo fmt -- --check && cargo clippy -- -D warnings`
+  - SDK & Frontend: `npm run lint` (uses `eslint` / `prettier`)
+- **Build**
+  - SDK: `npm run build`
+  - Frontend: `npm run build`
+- **Commit**
+  ```bash
+  git add .
+  git commit -m "feat: short description"
+  ```
+- **Push & open a Pull Request**
+  ```bash
+  git push origin my-feature
+  ```
+  Then open a PR on GitHub targeting `main`.
 
-4. **Check Formatting & Lints**
-   ```bash
-   cargo fmt --all -- --check
-   cargo clippy --workspace --all-targets -- -D warnings
-   ```
+## Review Checklist (for maintainers)
+- ✅ All tests pass.
+- ✅ CI pipeline succeeds.
+- ✅ No linting errors.
+- ✅ Changes follow the project’s coding style.
+- ✅ Documentation updated if applicable.
 
----
-
-## Smart Contract Security & Engineering Standards
-
-All pull requests modifying Soroban contracts (`invoice_registry`, `liquidity_pool`, `factoring_escrow`) must adhere to:
-
-1. **`#![no_std]` Compatibility**: Do not use standard library allocations in contract execution paths.
-2. **Checks-Effects-Interactions (CEI)**: Validate all authorization (`Address::require_auth()`) and invariants first, commit all `env.storage()` state mutations second, and perform cross-contract or SEP-41 `token::Client` transfers last.
-3. **Checked Arithmetic**: Always use `.checked_add()`, `.checked_sub()`, `.checked_mul()`, and `.checked_div()`, returning a typed contract error (`RegistryError`, `PoolError`, or `EscrowError`) on overflow/underflow.
-4. **Storage TTL Management**: Extend instance and persistent storage TTLs whenever state records are created or updated.
-5. **Unit & Integration Tests**: Every new contract function or error branch must include unit tests in the crate's `src/test.rs`.
-
----
-
-## Submitting a Pull Request
-
-1. Ensure all tests pass (`cargo test --workspace`).
-2. Reference the GitHub Issue in your PR description using `Closes #<issue-number>`.
-3. Complete the checklist in `.github/PULL_REQUEST_TEMPLATE.md`.
+## Helpful Resources
+- **Stellar Soroban Docs:** https://soroban.stellar.org/docs
+- **Drips Wave Guidelines:** https://drips.network/wave-guidelines
+- **Contributor Covenant Code of Conduct:** see `CODE_OF_CONDUCT.md`
