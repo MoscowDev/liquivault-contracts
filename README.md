@@ -4,7 +4,7 @@
 
 ## Workspace Modules
 
-1. **`contracts/invoice_registry`**: Manages trade receivable tokenization (`mint_invoice`), SHA-256 document metadata commitment (`BytesN<32>`), credit risk tier assignment (`RiskTier::TierA`, `TierB`, `TierC`), debtor/oracle verification (`verify_invoice`), and ownership lifecycle state transitions.
+1. **`contracts/invoice_registry`**: Manages trade receivable tokenization (`mint_invoice`), SHA-256 document metadata commitment (`BytesN<32>`), credit risk tier assignment (`RiskTier::TierA`, `TierB`, `TierC`), verifier-oracle/admin verification (`verify_invoice`), and ownership lifecycle state transitions.
 2. **`contracts/liquidity_pool`**: Manages USDC vault deposits (`deposit`), NAV-adjusted LP share minting/burning (`withdraw`), capital deployment to factoring escrows (`allocate_liquidity`), and pro-rata yield distribution (`repay_liquidity`).
 3. **`contracts/factoring_escrow`**: Executes atomic swaps of verified unpaid invoices for immediate USDC liquidity at an algorithmic time-and-risk-adjusted discount (`factor_invoice`) and handles maturity settlements (`settle_invoice`).
 
