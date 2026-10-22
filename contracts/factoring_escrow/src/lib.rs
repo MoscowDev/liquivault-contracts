@@ -222,6 +222,38 @@ impl FactoringEscrowContract {
         Ok(())
     }
 
+    /// Admin-only circuit breaker. While paused, `factor_invoice` and `settle_invoice` are rejected.
+    pub fn set_paused(env: Env, admin: Address, paused: bool) -> Result<(), EscrowError> {
+        let mut config = Self::require_admin(&env, &admin)?;
+        config.paused = paused;
+        env.storage().instance().set(&DataKey::Config, &config);
+        Self::extend_instance_ttl(&env);
+        events::emit_paused_changed(&env, &admin, paused);
+        Ok(())
+    }
+
+    /// Admin-only update of the discount rate configuration. Applies to future quotes only.
+    pub fn update_rate_config(env: Env, admin: Address, rate_config: RateConfig) -> Result<(), EscrowError> {
+        let mut config = Self::require_admin(&env, &admin)?;
+        Self::validate_rate_config(&rate_config)?;
+        config.rate_config = rate_config;
+        env.storage().instance().set(&DataKey::Config, &config);
+        Self::extend_instance_ttl(&env);
+        events::emit_rate_config_updated(&env, &admin);
+        Ok(())
+    }
+
+    /// Admin-only transfer of the admin role. The new admin must also authorize the transfer.
+    pub fn transfer_admin(env: Env, admin: Address, new_admin: Address) -> Result<(), EscrowError> {
+        let mut config = Self::require_admin(&env, &admin)?;
+        new_admin.require_auth();
+        config.admin = new_admin.clone();
+        env.storage().instance().set(&DataKey::Config, &config);
+        Self::extend_instance_ttl(&env);
+        events::emit_admin_transferred(&env, &admin, &new_admin);
+        Ok(())
+    }
+
     pub fn get_escrow_record(env: Env, invoice_id: u64) -> Result<EscrowRecord, EscrowError> {
         Self::load_escrow(&env, invoice_id)
     }
@@ -309,6 +341,15 @@ impl FactoringEscrowContract {
             return Err(EscrowError::InvalidRateConfiguration);
         }
         Ok(())
+    }
+
+    fn require_admin(env: &Env, caller: &Address) -> Result<EscrowConfig, EscrowError> {
+        caller.require_auth();
+        let config = Self::load_config(env)?;
+        if *caller != config.admin {
+            return Err(EscrowError::Unauthorized);
+        }
+        Ok(config)
     }
 
     fn load_config(env: &Env) -> Result<EscrowConfig, EscrowError> {

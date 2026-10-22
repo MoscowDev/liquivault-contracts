@@ -167,7 +167,7 @@ impl InvoiceRegistryContract {
     }
 
     /// Verifies an issued invoice and confirms or updates its credit risk tier.
-    /// Can be invoked by the authorized verifier oracle, admin, or the obligated debtor.
+    /// Can be invoked only by the authorized verifier oracle or the admin.
     pub fn verify_invoice(
         env: Env,
         caller: Address,
@@ -182,7 +182,9 @@ impl InvoiceRegistryContract {
         }
 
         let mut record = Self::load_invoice(&env, invoice_id)?;
-        if caller != config.verifier && caller != config.admin && caller != record.debtor {
+        // The debtor is intentionally NOT an authorized verifier: the merchant picks the debtor
+        // address at mint time, so debtor self-verification would let a merchant approve fake invoices.
+        if caller != config.verifier && caller != config.admin {
             return Err(RegistryError::Unauthorized);
         }
         if record.status != InvoiceStatus::Issued {

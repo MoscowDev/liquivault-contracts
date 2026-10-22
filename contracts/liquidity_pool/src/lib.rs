@@ -68,6 +68,19 @@ impl LiquidityPoolContract {
         Ok(())
     }
 
+    /// Admin-only circuit breaker. While paused, deposits, withdrawals and new allocations are rejected.
+    pub fn set_paused(env: Env, caller: Address, paused: bool) -> Result<(), PoolError> {
+        caller.require_auth();
+        let mut state = Self::load_state(&env)?;
+        if caller != state.admin {
+            return Err(PoolError::Unauthorized);
+        }
+        state.paused = paused;
+        env.storage().instance().set(&DataKey::State, &state);
+        Self::extend_instance_ttl(&env);
+        Ok(())
+    }
+
     /// Deposits USDC and mints pro-rata LP shares following CEI pattern.
     pub fn deposit(env: Env, provider: Address, amount: i128) -> Result<i128, PoolError> {
         provider.require_auth();

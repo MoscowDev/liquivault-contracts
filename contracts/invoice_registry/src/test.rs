@@ -124,3 +124,28 @@ fn test_reject_invalid_maturity_or_unauthorized_escrow() {
     let unauthorized_res = client.try_mark_factored(&attacker, &invoice_id);
     assert!(unauthorized_res.is_err());
 }
+
+#[test]
+fn test_debtor_and_merchant_cannot_verify_own_invoice() {
+    let (env, client, admin, verifier, _escrow, merchant, debtor, currency) = setup_env();
+    let invoice_id = client.mint_invoice(
+        &merchant,
+        &debtor,
+        &currency,
+        &10_000_0000000i128,
+        &(1_700_000_000 + 86_400 * 30),
+        &BytesN::from_array(&env, &[1u8; 32]),
+        &String::from_str(&env, "INV-F1"),
+        &RiskTier::TierC,
+    );
+
+    // Regression for F-1: debtor (chosen by the merchant) must not be able to verify.
+    assert!(client.try_verify_invoice(&debtor, &invoice_id, &RiskTier::TierA).is_err());
+    assert!(client.try_verify_invoice(&merchant, &invoice_id, &RiskTier::TierA).is_err());
+    assert_eq!(client.get_invoice(&invoice_id).status, InvoiceStatus::Issued);
+
+    // Admin and verifier still can.
+    client.verify_invoice(&admin, &invoice_id, &RiskTier::TierB);
+    assert_eq!(client.get_invoice(&invoice_id).status, InvoiceStatus::Verified);
+    let _ = verifier;
+}

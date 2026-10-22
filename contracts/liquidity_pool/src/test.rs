@@ -63,3 +63,31 @@ fn test_deposit_allocate_repay_and_yield_distribution() {
     let redeemed2 = pool_client.withdraw(&lp2, &shares2);
     assert_eq!(redeemed2, 40_720_0000000);
 }
+
+#[test]
+fn test_set_paused_blocks_deposit_and_withdraw_and_requires_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let escrow = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let lp = Address::generate(&env);
+    let stranger = Address::generate(&env);
+
+    let (usdc_addr, _usdc_client, usdc_admin_client) = create_usdc_token(&env, &admin);
+    let pool_id = env.register_contract(None, LiquidityPoolContract);
+    let pool = LiquidityPoolContractClient::new(&env, &pool_id);
+    pool.initialize(&admin, &usdc_addr, &escrow, &treasury, &1000u32);
+    usdc_admin_client.mint(&lp, &10_000_0000000);
+
+    let shares = pool.deposit(&lp, &5_000_0000000);
+
+    assert!(pool.try_set_paused(&stranger, &true).is_err());
+    pool.set_paused(&admin, &true);
+    assert!(pool.try_deposit(&lp, &1_000_0000000).is_err());
+    assert!(pool.try_withdraw(&lp, &shares).is_err());
+
+    pool.set_paused(&admin, &false);
+    pool.withdraw(&lp, &shares);
+}
