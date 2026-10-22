@@ -16,4 +16,8 @@ pub enum PoolError {
     InvalidReserveFactor = 10,
     PoolPaused = 11,
     RepaymentExceedsDeployed = 12,
+    TrancheWipedOut = 13,
+    JuniorCoverageTooLow = 14,
+    InvalidJuniorYieldBps = 15,
 }
+

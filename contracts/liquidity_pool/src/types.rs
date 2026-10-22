@@ -24,9 +24,21 @@ pub struct LpPosition {
     pub last_deposit_timestamp: u64,
 }
 
+/// First-loss capital tranche. Absorbs defaults before the senior tranche (`PoolState`)
+/// and receives `junior_yield_bps` of LP yield in exchange.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JuniorState {
+    pub total_assets: i128,
+    pub total_shares: i128,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
     State,
     Position(Address),
+    Junior,
+    JuniorPosition(Address),
+    JuniorYieldBps,
 }

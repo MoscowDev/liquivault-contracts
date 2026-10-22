@@ -28,3 +28,16 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/invoice_reg
 stellar contract deploy --wasm target/wasm32-unknown-unknown/release/liquidity_pool.wasm --source admin --network testnet
 stellar contract deploy --wasm target/wasm32-unknown-unknown/release/factoring_escrow.wasm --source admin --network testnet
 ```
+
+## Tranched Liquidity Pool
+
+The `liquidity_pool` supports two risk tranches:
+
+| Tranche | Deposit / withdraw | Risk | Return |
+| :--- | :--- | :--- | :--- |
+| **Senior** | `deposit` / `withdraw` | Loses only after junior capital is exhausted | Remaining LP yield (default 70%) |
+| **Junior** (first-loss) | `deposit_junior` / `withdraw_junior` | Absorbs defaults first | `junior_yield_bps` of LP yield (default 30%, admin-set, max 80%) |
+
+- With no junior capital the pool behaves exactly like a single-tranche pool.
+- Junior withdrawals must leave junior capital of at least 10% of deployed capital, so first-loss capital cannot leave while invoices are outstanding.
+- If defaults wipe out the junior tranche, new junior deposits are rejected until stale shares are resolved.

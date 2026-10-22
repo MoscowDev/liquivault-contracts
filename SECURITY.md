@@ -34,8 +34,9 @@ Severity is our own assessment.
 ### F-2 (High, FIXED): pool could not be paused
 `liquidity_pool` checked `state.paused`, but nothing set it. **Fix:** added admin-only `set_paused`. Regression test: `test_set_paused_blocks_deposit_and_withdraw_and_requires_admin`. Note that `repay_liquidity`, `allocate_liquidity` (paused check) and `write_off_default` behave as before; pausing does not block repayments.
 
-### F-3 (High): LPs can exit ahead of a default
+### F-3 (High, PARTIALLY MITIGATED): LPs can exit ahead of a default
 `write_off_default` reduces `total_assets` when an invoice is defaulted, so remaining LPs absorb the loss. LPs who withdraw idle liquidity before `mark_defaulted` avoid it. This is inherent to a pooled design. Possible mitigations: withdrawal queue or delay, per-tier loss reserves, an insurance reserve funded from the reserve factor.
+**Mitigation added:** a junior (first-loss) tranche. Defaults hit junior capital first, and junior withdrawals are blocked unless junior capital stays at or above 10% of deployed capital. Senior LPs can still exit ahead of a default and leave junior and remaining senior holders with the loss, so a withdrawal queue is still advisable.
 
 ### F-4 (Medium): centralized default marking and state mismatch
 Only the escrow admin can call `factoring_escrow::mark_defaulted` (after the grace period). `invoice_registry::mark_defaulted` can also be called directly by the registry admin **without** a grace-period check and without updating the escrow record, which leaves registry and escrow out of sync.
