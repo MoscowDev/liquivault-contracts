@@ -28,12 +28,7 @@ pub fn emit_invoice_minted(
     );
 }
 
-pub fn emit_invoice_verified(
-    env: &Env,
-    invoice_id: u64,
-    verifier: &Address,
-    risk_tier: RiskTier,
-) {
+pub fn emit_invoice_verified(env: &Env, invoice_id: u64, verifier: &Address, risk_tier: RiskTier) {
     env.events().publish(
         (symbol_short!("verified"), invoice_id),
         (verifier.clone(), risk_tier),
@@ -52,12 +47,7 @@ pub fn emit_status_updated(
     );
 }
 
-pub fn emit_ownership_transferred(
-    env: &Env,
-    invoice_id: u64,
-    from: &Address,
-    to: &Address,
-) {
+pub fn emit_ownership_transferred(env: &Env, invoice_id: u64, from: &Address, to: &Address) {
     env.events().publish(
         (symbol_short!("transfer"), invoice_id),
         (from.clone(), to.clone()),

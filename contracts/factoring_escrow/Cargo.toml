@@ -10,8 +10,8 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
-invoice_registry = { path = "../invoice_registry" }
-liquidity_pool = { path = "../liquidity_pool" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+invoice_registry = { path = "../invoice_registry" }
+liquidity_pool = { path = "../liquidity_pool" }

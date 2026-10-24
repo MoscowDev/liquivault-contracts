@@ -20,4 +20,3 @@ pub enum PoolError {
     JuniorCoverageTooLow = 14,
     InvalidJuniorYieldBps = 15,
 }
-

@@ -2,18 +2,15 @@
 
 pub mod errors;
 pub mod events;
+pub mod interfaces;
 pub mod types;
 
 #[cfg(test)]
 mod test;
 
 use crate::errors::EscrowError;
-use crate::types::{
-    DataKey, EscrowConfig, EscrowRecord, EscrowStatus, FactoringQuote, RateConfig,
-};
-use invoice_registry::types::{InvoiceStatus, RiskTier};
-use invoice_registry::InvoiceRegistryContractClient;
-use liquidity_pool::LiquidityPoolContractClient;
+use crate::interfaces::{InvoiceRegistryClient, InvoiceStatus, LiquidityPoolClient, RiskTier};
+use crate::types::{DataKey, EscrowConfig, EscrowRecord, EscrowStatus, FactoringQuote, RateConfig};
 use soroban_sdk::{contract, contractimpl, Address, Env};
 
 const BPS_DENOMINATOR: i128 = 10_000;
@@ -51,8 +48,12 @@ impl FactoringEscrowContract {
             paused: false,
         };
         env.storage().instance().set(&DataKey::Config, &config);
-        env.storage().instance().set(&DataKey::TotalFactoredVolume, &0i128);
-        env.storage().instance().set(&DataKey::ActiveEscrowCount, &0u64);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalFactoredVolume, &0i128);
+        env.storage()
+            .instance()
+            .set(&DataKey::ActiveEscrowCount, &0u64);
         Self::extend_instance_ttl(&env);
 
         events::emit_escrow_initialized(&env, &admin, &invoice_registry, &liquidity_pool);
@@ -68,27 +69,48 @@ impl FactoringEscrowContract {
     ) -> Result<FactoringQuote, EscrowError> {
         let config = Self::load_config(&env)?;
         let now = env.ledger().timestamp();
-        Self::compute_quote(invoice_id, face_value, risk_tier, now, maturity_timestamp, &config.rate_config)
+        Self::compute_quote(
+            invoice_id,
+            face_value,
+            risk_tier,
+            now,
+            maturity_timestamp,
+            &config.rate_config,
+        )
     }
 
-    pub fn preview_factoring_quote(env: Env, invoice_id: u64) -> Result<FactoringQuote, EscrowError> {
+    pub fn preview_factoring_quote(
+        env: Env,
+        invoice_id: u64,
+    ) -> Result<FactoringQuote, EscrowError> {
         let config = Self::load_config(&env)?;
-        let registry_client = InvoiceRegistryContractClient::new(&env, &config.invoice_registry);
+        let registry_client = InvoiceRegistryClient::new(&env, &config.invoice_registry);
         let invoice = registry_client.get_invoice(&invoice_id);
         let now = env.ledger().timestamp();
-        Self::compute_quote(invoice.invoice_id, invoice.face_value, invoice.risk_tier, now, invoice.maturity_timestamp, &config.rate_config)
+        Self::compute_quote(
+            invoice.invoice_id,
+            invoice.face_value,
+            invoice.risk_tier,
+            now,
+            invoice.maturity_timestamp,
+            &config.rate_config,
+        )
     }
 
     /// Executes an atomic swap of a verified unpaid trade invoice for immediate USDC liquidity.
     /// Strictly implements the Checks-Effects-Interactions (CEI) pattern.
-    pub fn factor_invoice(env: Env, merchant: Address, invoice_id: u64) -> Result<FactoringQuote, EscrowError> {
+    pub fn factor_invoice(
+        env: Env,
+        merchant: Address,
+        invoice_id: u64,
+    ) -> Result<FactoringQuote, EscrowError> {
         merchant.require_auth();
         let config = Self::load_config(&env)?;
         if config.paused {
             return Err(EscrowError::ContractPaused);
         }
 
-        let registry_client = InvoiceRegistryContractClient::new(&env, &config.invoice_registry);
+        let registry_client = InvoiceRegistryClient::new(&env, &config.invoice_registry);
         let invoice = registry_client.get_invoice(&invoice_id);
 
         if invoice.owner != merchant {
@@ -129,26 +151,46 @@ impl FactoringEscrowContract {
         env.storage().persistent().set(&escrow_key, &escrow_record);
         Self::extend_persistent_ttl(&env, &escrow_key);
 
-        let total_volume: i128 = env.storage().instance().get(&DataKey::TotalFactoredVolume).unwrap_or(0);
-        let new_volume = total_volume.checked_add(invoice.face_value).ok_or(EscrowError::ArithmeticOverflow)?;
-        env.storage().instance().set(&DataKey::TotalFactoredVolume, &new_volume);
+        let total_volume: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TotalFactoredVolume)
+            .unwrap_or(0);
+        let new_volume = total_volume
+            .checked_add(invoice.face_value)
+            .ok_or(EscrowError::ArithmeticOverflow)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalFactoredVolume, &new_volume);
 
-        let active_count: u64 = env.storage().instance().get(&DataKey::ActiveEscrowCount).unwrap_or(0);
-        let new_active = active_count.checked_add(1).ok_or(EscrowError::ArithmeticOverflow)?;
-        env.storage().instance().set(&DataKey::ActiveEscrowCount, &new_active);
+        let active_count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ActiveEscrowCount)
+            .unwrap_or(0);
+        let new_active = active_count
+            .checked_add(1)
+            .ok_or(EscrowError::ArithmeticOverflow)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::ActiveEscrowCount, &new_active);
         Self::extend_instance_ttl(&env);
 
         let escrow_addr = env.current_contract_address();
         registry_client.mark_factored(&escrow_addr, &invoice_id);
 
-        let pool_client = LiquidityPoolContractClient::new(&env, &config.liquidity_pool);
+        let pool_client = LiquidityPoolClient::new(&env, &config.liquidity_pool);
         pool_client.allocate_liquidity(&escrow_addr, &merchant, &quote.net_payout);
 
         events::emit_invoice_factored(&env, invoice_id, &merchant, &quote);
         Ok(quote)
     }
 
-    pub fn settle_invoice(env: Env, payer: Address, invoice_id: u64) -> Result<(i128, i128), EscrowError> {
+    pub fn settle_invoice(
+        env: Env,
+        payer: Address,
+        invoice_id: u64,
+    ) -> Result<(i128, i128), EscrowError> {
         payer.require_auth();
         let config = Self::load_config(&env)?;
         if config.paused {
@@ -166,12 +208,18 @@ impl FactoringEscrowContract {
         env.storage().persistent().set(&escrow_key, &escrow_record);
         Self::extend_persistent_ttl(&env, &escrow_key);
 
-        let active_count: u64 = env.storage().instance().get(&DataKey::ActiveEscrowCount).unwrap_or(1);
-        env.storage().instance().set(&DataKey::ActiveEscrowCount, &active_count.saturating_sub(1));
+        let active_count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ActiveEscrowCount)
+            .unwrap_or(1);
+        env.storage()
+            .instance()
+            .set(&DataKey::ActiveEscrowCount, &active_count.saturating_sub(1));
         Self::extend_instance_ttl(&env);
 
         let escrow_addr = env.current_contract_address();
-        let pool_client = LiquidityPoolContractClient::new(&env, &config.liquidity_pool);
+        let pool_client = LiquidityPoolClient::new(&env, &config.liquidity_pool);
         let (lp_yield, protocol_cut) = pool_client.repay_liquidity(
             &escrow_addr,
             &payer,
@@ -179,10 +227,17 @@ impl FactoringEscrowContract {
             &escrow_record.total_discount,
         );
 
-        let registry_client = InvoiceRegistryContractClient::new(&env, &config.invoice_registry);
+        let registry_client = InvoiceRegistryClient::new(&env, &config.invoice_registry);
         registry_client.mark_settled(&escrow_addr, &invoice_id);
 
-        events::emit_invoice_settled(&env, invoice_id, &payer, escrow_record.face_value, lp_yield, protocol_cut);
+        events::emit_invoice_settled(
+            &env,
+            invoice_id,
+            &payer,
+            escrow_record.face_value,
+            lp_yield,
+            protocol_cut,
+        );
         Ok((lp_yield, protocol_cut))
     }
 
@@ -198,7 +253,10 @@ impl FactoringEscrowContract {
             return Err(EscrowError::EscrowAlreadySettled);
         }
 
-        let deadline = escrow_record.maturity_timestamp.checked_add(config.rate_config.grace_period_seconds).ok_or(EscrowError::ArithmeticOverflow)?;
+        let deadline = escrow_record
+            .maturity_timestamp
+            .checked_add(config.rate_config.grace_period_seconds)
+            .ok_or(EscrowError::ArithmeticOverflow)?;
         if env.ledger().timestamp() <= deadline {
             return Err(EscrowError::GracePeriodNotElapsed);
         }
@@ -208,14 +266,20 @@ impl FactoringEscrowContract {
         env.storage().persistent().set(&escrow_key, &escrow_record);
         Self::extend_persistent_ttl(&env, &escrow_key);
 
-        let active_count: u64 = env.storage().instance().get(&DataKey::ActiveEscrowCount).unwrap_or(1);
-        env.storage().instance().set(&DataKey::ActiveEscrowCount, &active_count.saturating_sub(1));
+        let active_count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ActiveEscrowCount)
+            .unwrap_or(1);
+        env.storage()
+            .instance()
+            .set(&DataKey::ActiveEscrowCount, &active_count.saturating_sub(1));
 
         let escrow_addr = env.current_contract_address();
-        let pool_client = LiquidityPoolContractClient::new(&env, &config.liquidity_pool);
+        let pool_client = LiquidityPoolClient::new(&env, &config.liquidity_pool);
         pool_client.write_off_default(&escrow_addr, &escrow_record.net_payout);
 
-        let registry_client = InvoiceRegistryContractClient::new(&env, &config.invoice_registry);
+        let registry_client = InvoiceRegistryClient::new(&env, &config.invoice_registry);
         registry_client.mark_defaulted(&escrow_addr, &invoice_id);
 
         events::emit_invoice_defaulted(&env, invoice_id, escrow_record.net_payout);
@@ -233,7 +297,11 @@ impl FactoringEscrowContract {
     }
 
     /// Admin-only update of the discount rate configuration. Applies to future quotes only.
-    pub fn update_rate_config(env: Env, admin: Address, rate_config: RateConfig) -> Result<(), EscrowError> {
+    pub fn update_rate_config(
+        env: Env,
+        admin: Address,
+        rate_config: RateConfig,
+    ) -> Result<(), EscrowError> {
         let mut config = Self::require_admin(&env, &admin)?;
         Self::validate_rate_config(&rate_config)?;
         config.rate_config = rate_config;
@@ -259,8 +327,16 @@ impl FactoringEscrowContract {
     }
 
     pub fn get_protocol_metrics(env: Env) -> (i128, u64) {
-        let total_volume: i128 = env.storage().instance().get(&DataKey::TotalFactoredVolume).unwrap_or(0);
-        let active_count: u64 = env.storage().instance().get(&DataKey::ActiveEscrowCount).unwrap_or(0);
+        let total_volume: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TotalFactoredVolume)
+            .unwrap_or(0);
+        let active_count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ActiveEscrowCount)
+            .unwrap_or(0);
         (total_volume, active_count)
     }
 
@@ -275,7 +351,9 @@ impl FactoringEscrowContract {
         if maturity_timestamp <= now {
             return Err(EscrowError::InvoiceAlreadyExpired);
         }
-        let duration_seconds = maturity_timestamp.checked_sub(now).ok_or(EscrowError::ArithmeticOverflow)?;
+        let duration_seconds = maturity_timestamp
+            .checked_sub(now)
+            .ok_or(EscrowError::ArithmeticOverflow)?;
 
         let annual_bps = match risk_tier {
             RiskTier::TierA => rate_config.tier_a_annual_bps as i128,
@@ -353,21 +431,34 @@ impl FactoringEscrowContract {
     }
 
     fn load_config(env: &Env) -> Result<EscrowConfig, EscrowError> {
-        env.storage().instance().get(&DataKey::Config).ok_or(EscrowError::NotInitialized)
+        env.storage()
+            .instance()
+            .get(&DataKey::Config)
+            .ok_or(EscrowError::NotInitialized)
     }
 
     fn load_escrow(env: &Env, invoice_id: u64) -> Result<EscrowRecord, EscrowError> {
         let key = DataKey::Escrow(invoice_id);
-        let record = env.storage().persistent().get(&key).ok_or(EscrowError::EscrowNotFound)?;
+        let record = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(EscrowError::EscrowNotFound)?;
         Self::extend_persistent_ttl(env, &key);
         Ok(record)
     }
 
     fn extend_instance_ttl(env: &Env) {
-        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
     }
 
     fn extend_persistent_ttl(env: &Env, key: &DataKey) {
-        env.storage().persistent().extend_ttl(key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        env.storage().persistent().extend_ttl(
+            key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
     }
 }

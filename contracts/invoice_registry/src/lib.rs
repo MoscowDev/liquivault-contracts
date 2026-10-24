@@ -144,7 +144,9 @@ impl InvoiceRegistryContract {
             .get(&merchant_key)
             .unwrap_or_else(|| Vec::new(&env));
         merchant_list.push_back(invoice_id);
-        env.storage().persistent().set(&merchant_key, &merchant_list);
+        env.storage()
+            .persistent()
+            .set(&merchant_key, &merchant_list);
         Self::extend_persistent_ttl(&env, &merchant_key);
 
         env.storage()
@@ -281,11 +283,7 @@ impl InvoiceRegistryContract {
 
     /// Marks a Factored invoice as Defaulted if unpaid past maturity + grace period.
     /// Restricted exclusively to the configured FactoringEscrow contract or Admin.
-    pub fn mark_defaulted(
-        env: Env,
-        caller: Address,
-        invoice_id: u64,
-    ) -> Result<(), RegistryError> {
+    pub fn mark_defaulted(env: Env, caller: Address, invoice_id: u64) -> Result<(), RegistryError> {
         caller.require_auth();
         let config = Self::load_config(&env)?;
         if caller != config.factoring_escrow && caller != config.admin {

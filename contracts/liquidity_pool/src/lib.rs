@@ -62,7 +62,11 @@ impl LiquidityPoolContract {
         Ok(())
     }
 
-    pub fn set_factoring_escrow(env: Env, caller: Address, factoring_escrow: Address) -> Result<(), PoolError> {
+    pub fn set_factoring_escrow(
+        env: Env,
+        caller: Address,
+        factoring_escrow: Address,
+    ) -> Result<(), PoolError> {
         caller.require_auth();
         let mut state = Self::load_state(&env)?;
         if caller != state.admin {
@@ -97,25 +101,42 @@ impl LiquidityPoolContract {
         if state.paused {
             return Err(PoolError::PoolPaused);
         }
-        let shares_to_mint = Self::compute_shares_for_deposit(amount, state.total_assets, state.total_shares)?;
+        let shares_to_mint =
+            Self::compute_shares_for_deposit(amount, state.total_assets, state.total_shares)?;
         if shares_to_mint <= 0 {
             return Err(PoolError::ZeroSharesMinted);
         }
 
-        state.total_assets = state.total_assets.checked_add(amount).ok_or(PoolError::ArithmeticOverflow)?;
-        state.total_shares = state.total_shares.checked_add(shares_to_mint).ok_or(PoolError::ArithmeticOverflow)?;
+        state.total_assets = state
+            .total_assets
+            .checked_add(amount)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        state.total_shares = state
+            .total_shares
+            .checked_add(shares_to_mint)
+            .ok_or(PoolError::ArithmeticOverflow)?;
         env.storage().instance().set(&DataKey::State, &state);
         Self::extend_instance_ttl(&env);
 
         let pos_key = DataKey::Position(provider.clone());
-        let mut position = env.storage().persistent().get(&pos_key).unwrap_or(LpPosition {
-            provider: provider.clone(),
-            shares: 0,
-            deposited_usdc: 0,
-            last_deposit_timestamp: 0,
-        });
-        position.shares = position.shares.checked_add(shares_to_mint).ok_or(PoolError::ArithmeticOverflow)?;
-        position.deposited_usdc = position.deposited_usdc.checked_add(amount).ok_or(PoolError::ArithmeticOverflow)?;
+        let mut position = env
+            .storage()
+            .persistent()
+            .get(&pos_key)
+            .unwrap_or(LpPosition {
+                provider: provider.clone(),
+                shares: 0,
+                deposited_usdc: 0,
+                last_deposit_timestamp: 0,
+            });
+        position.shares = position
+            .shares
+            .checked_add(shares_to_mint)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        position.deposited_usdc = position
+            .deposited_usdc
+            .checked_add(amount)
+            .ok_or(PoolError::ArithmeticOverflow)?;
         position.last_deposit_timestamp = env.ledger().timestamp();
         env.storage().persistent().set(&pos_key, &position);
         Self::extend_persistent_ttl(&env, &pos_key);
@@ -137,11 +158,19 @@ impl LiquidityPoolContract {
             return Err(PoolError::PoolPaused);
         }
         let pos_key = DataKey::Position(provider.clone());
-        let mut position: LpPosition = env.storage().persistent().get(&pos_key).ok_or(PoolError::InsufficientShares)?;
+        let mut position: LpPosition = env
+            .storage()
+            .persistent()
+            .get(&pos_key)
+            .ok_or(PoolError::InsufficientShares)?;
         if position.shares < shares_to_burn {
             return Err(PoolError::InsufficientShares);
         }
-        let usdc_to_return = Self::compute_assets_for_shares(shares_to_burn, state.total_assets, state.total_shares)?;
+        let usdc_to_return = Self::compute_assets_for_shares(
+            shares_to_burn,
+            state.total_assets,
+            state.total_shares,
+        )?;
         if usdc_to_return <= 0 {
             return Err(PoolError::ZeroAssetsReturned);
         }
@@ -150,14 +179,31 @@ impl LiquidityPoolContract {
             return Err(PoolError::InsufficientPoolLiquidity);
         }
 
-        let deposit_reduction = position.deposited_usdc.checked_mul(shares_to_burn).ok_or(PoolError::ArithmeticOverflow)?.checked_div(position.shares).ok_or(PoolError::ArithmeticOverflow)?;
-        position.shares = position.shares.checked_sub(shares_to_burn).ok_or(PoolError::ArithmeticOverflow)?;
-        position.deposited_usdc = position.deposited_usdc.checked_sub(deposit_reduction).unwrap_or(0);
+        let deposit_reduction = position
+            .deposited_usdc
+            .checked_mul(shares_to_burn)
+            .ok_or(PoolError::ArithmeticOverflow)?
+            .checked_div(position.shares)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        position.shares = position
+            .shares
+            .checked_sub(shares_to_burn)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        position.deposited_usdc = position
+            .deposited_usdc
+            .checked_sub(deposit_reduction)
+            .unwrap_or(0);
         env.storage().persistent().set(&pos_key, &position);
         Self::extend_persistent_ttl(&env, &pos_key);
 
-        state.total_shares = state.total_shares.checked_sub(shares_to_burn).ok_or(PoolError::ArithmeticOverflow)?;
-        state.total_assets = state.total_assets.checked_sub(usdc_to_return).ok_or(PoolError::ArithmeticOverflow)?;
+        state.total_shares = state
+            .total_shares
+            .checked_sub(shares_to_burn)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        state.total_assets = state
+            .total_assets
+            .checked_sub(usdc_to_return)
+            .ok_or(PoolError::ArithmeticOverflow)?;
         env.storage().instance().set(&DataKey::State, &state);
         Self::extend_instance_ttl(&env);
 
@@ -167,7 +213,12 @@ impl LiquidityPoolContract {
         Ok(usdc_to_return)
     }
 
-    pub fn allocate_liquidity(env: Env, escrow_caller: Address, merchant_recipient: Address, principal_amount: i128) -> Result<(), PoolError> {
+    pub fn allocate_liquidity(
+        env: Env,
+        escrow_caller: Address,
+        merchant_recipient: Address,
+        principal_amount: i128,
+    ) -> Result<(), PoolError> {
         escrow_caller.require_auth();
         if principal_amount <= 0 {
             return Err(PoolError::InvalidAmount);
@@ -183,17 +234,35 @@ impl LiquidityPoolContract {
         if principal_amount > idle_liquidity {
             return Err(PoolError::InsufficientPoolLiquidity);
         }
-        state.deployed_capital = state.deployed_capital.checked_add(principal_amount).ok_or(PoolError::ArithmeticOverflow)?;
+        state.deployed_capital = state
+            .deployed_capital
+            .checked_add(principal_amount)
+            .ok_or(PoolError::ArithmeticOverflow)?;
         env.storage().instance().set(&DataKey::State, &state);
         Self::extend_instance_ttl(&env);
 
         let token_client = token::Client::new(&env, &state.usdc_token);
-        token_client.transfer(&env.current_contract_address(), &merchant_recipient, &principal_amount);
-        events::emit_liquidity_allocated(&env, &escrow_caller, &merchant_recipient, principal_amount);
+        token_client.transfer(
+            &env.current_contract_address(),
+            &merchant_recipient,
+            &principal_amount,
+        );
+        events::emit_liquidity_allocated(
+            &env,
+            &escrow_caller,
+            &merchant_recipient,
+            principal_amount,
+        );
         Ok(())
     }
 
-    pub fn repay_liquidity(env: Env, escrow_caller: Address, payer: Address, principal_repaid: i128, gross_yield: i128) -> Result<(i128, i128), PoolError> {
+    pub fn repay_liquidity(
+        env: Env,
+        escrow_caller: Address,
+        payer: Address,
+        principal_repaid: i128,
+        gross_yield: i128,
+    ) -> Result<(i128, i128), PoolError> {
         escrow_caller.require_auth();
         payer.require_auth();
         if principal_repaid <= 0 || gross_yield < 0 {
@@ -206,19 +275,39 @@ impl LiquidityPoolContract {
         if principal_repaid > state.deployed_capital {
             return Err(PoolError::RepaymentExceedsDeployed);
         }
-        let protocol_cut = gross_yield.checked_mul(state.reserve_factor_bps as i128).ok_or(PoolError::ArithmeticOverflow)?.checked_div(BPS_DENOMINATOR).ok_or(PoolError::ArithmeticOverflow)?;
-        let lp_yield = gross_yield.checked_sub(protocol_cut).ok_or(PoolError::ArithmeticOverflow)?;
-        let pool_inflow = principal_repaid.checked_add(lp_yield).ok_or(PoolError::ArithmeticOverflow)?;
+        let protocol_cut = gross_yield
+            .checked_mul(state.reserve_factor_bps as i128)
+            .ok_or(PoolError::ArithmeticOverflow)?
+            .checked_div(BPS_DENOMINATOR)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        let lp_yield = gross_yield
+            .checked_sub(protocol_cut)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        let pool_inflow = principal_repaid
+            .checked_add(lp_yield)
+            .ok_or(PoolError::ArithmeticOverflow)?;
 
-        state.deployed_capital = state.deployed_capital.checked_sub(principal_repaid).ok_or(PoolError::ArithmeticOverflow)?;
+        state.deployed_capital = state
+            .deployed_capital
+            .checked_sub(principal_repaid)
+            .ok_or(PoolError::ArithmeticOverflow)?;
         let (junior_yield, senior_yield) = Self::split_yield(&env, lp_yield)?;
         if junior_yield > 0 {
             let mut junior = Self::load_junior(&env);
-            junior.total_assets = junior.total_assets.checked_add(junior_yield).ok_or(PoolError::ArithmeticOverflow)?;
+            junior.total_assets = junior
+                .total_assets
+                .checked_add(junior_yield)
+                .ok_or(PoolError::ArithmeticOverflow)?;
             env.storage().instance().set(&DataKey::Junior, &junior);
         }
-        state.total_assets = state.total_assets.checked_add(senior_yield).ok_or(PoolError::ArithmeticOverflow)?;
-        state.cumulative_yield = state.cumulative_yield.checked_add(lp_yield).ok_or(PoolError::ArithmeticOverflow)?;
+        state.total_assets = state
+            .total_assets
+            .checked_add(senior_yield)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        state.cumulative_yield = state
+            .cumulative_yield
+            .checked_add(lp_yield)
+            .ok_or(PoolError::ArithmeticOverflow)?;
         env.storage().instance().set(&DataKey::State, &state);
         Self::extend_instance_ttl(&env);
 
@@ -227,11 +316,21 @@ impl LiquidityPoolContract {
         if protocol_cut > 0 {
             token_client.transfer(&payer, &state.treasury, &protocol_cut);
         }
-        events::emit_liquidity_repaid(&env, &escrow_caller, principal_repaid, lp_yield, protocol_cut);
+        events::emit_liquidity_repaid(
+            &env,
+            &escrow_caller,
+            principal_repaid,
+            lp_yield,
+            protocol_cut,
+        );
         Ok((lp_yield, protocol_cut))
     }
 
-    pub fn write_off_default(env: Env, escrow_caller: Address, defaulted_principal: i128) -> Result<(), PoolError> {
+    pub fn write_off_default(
+        env: Env,
+        escrow_caller: Address,
+        defaulted_principal: i128,
+    ) -> Result<(), PoolError> {
         escrow_caller.require_auth();
         let mut state = Self::load_state(&env)?;
         if escrow_caller != state.factoring_escrow {
@@ -240,7 +339,10 @@ impl LiquidityPoolContract {
         if defaulted_principal <= 0 || defaulted_principal > state.deployed_capital {
             return Err(PoolError::InvalidAmount);
         }
-        state.deployed_capital = state.deployed_capital.checked_sub(defaulted_principal).ok_or(PoolError::ArithmeticOverflow)?;
+        state.deployed_capital = state
+            .deployed_capital
+            .checked_sub(defaulted_principal)
+            .ok_or(PoolError::ArithmeticOverflow)?;
         let (junior_loss, senior_loss) = Self::absorb_loss(&env, defaulted_principal);
         state.total_assets = state.total_assets.checked_sub(senior_loss).unwrap_or(0);
         events::emit_loss_absorbed(&env, junior_loss, senior_loss);
@@ -265,25 +367,42 @@ impl LiquidityPoolContract {
             // Tranche was wiped out by defaults; stale shares would dilute a new depositor.
             return Err(PoolError::TrancheWipedOut);
         }
-        let shares_to_mint = Self::compute_shares_for_deposit(amount, junior.total_assets, junior.total_shares)?;
+        let shares_to_mint =
+            Self::compute_shares_for_deposit(amount, junior.total_assets, junior.total_shares)?;
         if shares_to_mint <= 0 {
             return Err(PoolError::ZeroSharesMinted);
         }
 
-        junior.total_assets = junior.total_assets.checked_add(amount).ok_or(PoolError::ArithmeticOverflow)?;
-        junior.total_shares = junior.total_shares.checked_add(shares_to_mint).ok_or(PoolError::ArithmeticOverflow)?;
+        junior.total_assets = junior
+            .total_assets
+            .checked_add(amount)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        junior.total_shares = junior
+            .total_shares
+            .checked_add(shares_to_mint)
+            .ok_or(PoolError::ArithmeticOverflow)?;
         env.storage().instance().set(&DataKey::Junior, &junior);
         Self::extend_instance_ttl(&env);
 
         let pos_key = DataKey::JuniorPosition(provider.clone());
-        let mut position = env.storage().persistent().get(&pos_key).unwrap_or(LpPosition {
-            provider: provider.clone(),
-            shares: 0,
-            deposited_usdc: 0,
-            last_deposit_timestamp: 0,
-        });
-        position.shares = position.shares.checked_add(shares_to_mint).ok_or(PoolError::ArithmeticOverflow)?;
-        position.deposited_usdc = position.deposited_usdc.checked_add(amount).ok_or(PoolError::ArithmeticOverflow)?;
+        let mut position = env
+            .storage()
+            .persistent()
+            .get(&pos_key)
+            .unwrap_or(LpPosition {
+                provider: provider.clone(),
+                shares: 0,
+                deposited_usdc: 0,
+                last_deposit_timestamp: 0,
+            });
+        position.shares = position
+            .shares
+            .checked_add(shares_to_mint)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        position.deposited_usdc = position
+            .deposited_usdc
+            .checked_add(amount)
+            .ok_or(PoolError::ArithmeticOverflow)?;
         position.last_deposit_timestamp = env.ledger().timestamp();
         env.storage().persistent().set(&pos_key, &position);
         Self::extend_persistent_ttl(&env, &pos_key);
@@ -296,7 +415,11 @@ impl LiquidityPoolContract {
 
     /// Burns junior shares and returns USDC. Rejected if it would leave junior capital below
     /// `JUNIOR_MIN_COVERAGE_BPS` of deployed capital, or exceed idle pool liquidity.
-    pub fn withdraw_junior(env: Env, provider: Address, shares_to_burn: i128) -> Result<i128, PoolError> {
+    pub fn withdraw_junior(
+        env: Env,
+        provider: Address,
+        shares_to_burn: i128,
+    ) -> Result<i128, PoolError> {
         provider.require_auth();
         if shares_to_burn <= 0 {
             return Err(PoolError::InvalidAmount);
@@ -306,31 +429,63 @@ impl LiquidityPoolContract {
             return Err(PoolError::PoolPaused);
         }
         let pos_key = DataKey::JuniorPosition(provider.clone());
-        let mut position: LpPosition = env.storage().persistent().get(&pos_key).ok_or(PoolError::InsufficientShares)?;
+        let mut position: LpPosition = env
+            .storage()
+            .persistent()
+            .get(&pos_key)
+            .ok_or(PoolError::InsufficientShares)?;
         if position.shares < shares_to_burn {
             return Err(PoolError::InsufficientShares);
         }
         let mut junior = Self::load_junior(&env);
-        let usdc_to_return = Self::compute_assets_for_shares(shares_to_burn, junior.total_assets, junior.total_shares)?;
+        let usdc_to_return = Self::compute_assets_for_shares(
+            shares_to_burn,
+            junior.total_assets,
+            junior.total_shares,
+        )?;
         if usdc_to_return <= 0 {
             return Err(PoolError::ZeroAssetsReturned);
         }
         if usdc_to_return > Self::idle_liquidity(&env, &state)? {
             return Err(PoolError::InsufficientPoolLiquidity);
         }
-        let remaining = junior.total_assets.checked_sub(usdc_to_return).ok_or(PoolError::ArithmeticOverflow)?;
-        let required = state.deployed_capital.checked_mul(JUNIOR_MIN_COVERAGE_BPS).ok_or(PoolError::ArithmeticOverflow)?;
-        if remaining.checked_mul(BPS_DENOMINATOR).ok_or(PoolError::ArithmeticOverflow)? < required {
+        let remaining = junior
+            .total_assets
+            .checked_sub(usdc_to_return)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        let required = state
+            .deployed_capital
+            .checked_mul(JUNIOR_MIN_COVERAGE_BPS)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        if remaining
+            .checked_mul(BPS_DENOMINATOR)
+            .ok_or(PoolError::ArithmeticOverflow)?
+            < required
+        {
             return Err(PoolError::JuniorCoverageTooLow);
         }
 
-        let deposit_reduction = position.deposited_usdc.checked_mul(shares_to_burn).ok_or(PoolError::ArithmeticOverflow)?.checked_div(position.shares).ok_or(PoolError::ArithmeticOverflow)?;
-        position.shares = position.shares.checked_sub(shares_to_burn).ok_or(PoolError::ArithmeticOverflow)?;
-        position.deposited_usdc = position.deposited_usdc.checked_sub(deposit_reduction).unwrap_or(0);
+        let deposit_reduction = position
+            .deposited_usdc
+            .checked_mul(shares_to_burn)
+            .ok_or(PoolError::ArithmeticOverflow)?
+            .checked_div(position.shares)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        position.shares = position
+            .shares
+            .checked_sub(shares_to_burn)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        position.deposited_usdc = position
+            .deposited_usdc
+            .checked_sub(deposit_reduction)
+            .unwrap_or(0);
         env.storage().persistent().set(&pos_key, &position);
         Self::extend_persistent_ttl(&env, &pos_key);
 
-        junior.total_shares = junior.total_shares.checked_sub(shares_to_burn).ok_or(PoolError::ArithmeticOverflow)?;
+        junior.total_shares = junior
+            .total_shares
+            .checked_sub(shares_to_burn)
+            .ok_or(PoolError::ArithmeticOverflow)?;
         junior.total_assets = remaining;
         env.storage().instance().set(&DataKey::Junior, &junior);
         Self::extend_instance_ttl(&env);
@@ -361,12 +516,15 @@ impl LiquidityPoolContract {
     }
 
     pub fn get_junior_position(env: Env, provider: Address) -> LpPosition {
-        env.storage().persistent().get(&DataKey::JuniorPosition(provider.clone())).unwrap_or(LpPosition {
-            provider,
-            shares: 0,
-            deposited_usdc: 0,
-            last_deposit_timestamp: 0,
-        })
+        env.storage()
+            .persistent()
+            .get(&DataKey::JuniorPosition(provider.clone()))
+            .unwrap_or(LpPosition {
+                provider,
+                shares: 0,
+                deposited_usdc: 0,
+                last_deposit_timestamp: 0,
+            })
     }
 
     pub fn get_junior_share_price(env: Env) -> Result<i128, PoolError> {
@@ -374,7 +532,12 @@ impl LiquidityPoolContract {
         if junior.total_shares == 0 || junior.total_assets == 0 {
             return Ok(SHARE_PRICE_SCALE);
         }
-        junior.total_assets.checked_mul(SHARE_PRICE_SCALE).ok_or(PoolError::ArithmeticOverflow)?.checked_div(junior.total_shares).ok_or(PoolError::ArithmeticOverflow)
+        junior
+            .total_assets
+            .checked_mul(SHARE_PRICE_SCALE)
+            .ok_or(PoolError::ArithmeticOverflow)?
+            .checked_div(junior.total_shares)
+            .ok_or(PoolError::ArithmeticOverflow)
     }
 
     pub fn get_pool_state(env: Env) -> Result<PoolState, PoolError> {
@@ -382,12 +545,15 @@ impl LiquidityPoolContract {
     }
 
     pub fn get_position(env: Env, provider: Address) -> LpPosition {
-        env.storage().persistent().get(&DataKey::Position(provider.clone())).unwrap_or(LpPosition {
-            provider,
-            shares: 0,
-            deposited_usdc: 0,
-            last_deposit_timestamp: 0,
-        })
+        env.storage()
+            .persistent()
+            .get(&DataKey::Position(provider.clone()))
+            .unwrap_or(LpPosition {
+                provider,
+                shares: 0,
+                deposited_usdc: 0,
+                last_deposit_timestamp: 0,
+            })
     }
 
     pub fn get_share_price(env: Env) -> Result<i128, PoolError> {
@@ -395,7 +561,12 @@ impl LiquidityPoolContract {
         if state.total_shares == 0 || state.total_assets == 0 {
             return Ok(SHARE_PRICE_SCALE);
         }
-        state.total_assets.checked_mul(SHARE_PRICE_SCALE).ok_or(PoolError::ArithmeticOverflow)?.checked_div(state.total_shares).ok_or(PoolError::ArithmeticOverflow)
+        state
+            .total_assets
+            .checked_mul(SHARE_PRICE_SCALE)
+            .ok_or(PoolError::ArithmeticOverflow)?
+            .checked_div(state.total_shares)
+            .ok_or(PoolError::ArithmeticOverflow)
     }
 
     pub fn preview_deposit(env: Env, assets: i128) -> Result<i128, PoolError> {
@@ -408,29 +579,54 @@ impl LiquidityPoolContract {
         Self::compute_assets_for_shares(shares, state.total_assets, state.total_shares)
     }
 
-    fn compute_shares_for_deposit(assets: i128, total_assets: i128, total_shares: i128) -> Result<i128, PoolError> {
+    fn compute_shares_for_deposit(
+        assets: i128,
+        total_assets: i128,
+        total_shares: i128,
+    ) -> Result<i128, PoolError> {
         if assets <= 0 {
             return Err(PoolError::InvalidAmount);
         }
         if total_shares == 0 || total_assets == 0 {
             return Ok(assets);
         }
-        assets.checked_mul(total_shares).ok_or(PoolError::ArithmeticOverflow)?.checked_div(total_assets).ok_or(PoolError::ArithmeticOverflow)
+        assets
+            .checked_mul(total_shares)
+            .ok_or(PoolError::ArithmeticOverflow)?
+            .checked_div(total_assets)
+            .ok_or(PoolError::ArithmeticOverflow)
     }
 
-    fn compute_assets_for_shares(shares: i128, total_assets: i128, total_shares: i128) -> Result<i128, PoolError> {
+    fn compute_assets_for_shares(
+        shares: i128,
+        total_assets: i128,
+        total_shares: i128,
+    ) -> Result<i128, PoolError> {
         if shares <= 0 || total_shares <= 0 {
             return Err(PoolError::InvalidAmount);
         }
-        shares.checked_mul(total_assets).ok_or(PoolError::ArithmeticOverflow)?.checked_div(total_shares).ok_or(PoolError::ArithmeticOverflow)
+        shares
+            .checked_mul(total_assets)
+            .ok_or(PoolError::ArithmeticOverflow)?
+            .checked_div(total_shares)
+            .ok_or(PoolError::ArithmeticOverflow)
     }
 
     fn load_junior(env: &Env) -> JuniorState {
-        env.storage().instance().get(&DataKey::Junior).unwrap_or(JuniorState { total_assets: 0, total_shares: 0 })
+        env.storage()
+            .instance()
+            .get(&DataKey::Junior)
+            .unwrap_or(JuniorState {
+                total_assets: 0,
+                total_shares: 0,
+            })
     }
 
     fn junior_yield_bps(env: &Env) -> u32 {
-        env.storage().instance().get(&DataKey::JuniorYieldBps).unwrap_or(DEFAULT_JUNIOR_YIELD_BPS)
+        env.storage()
+            .instance()
+            .get(&DataKey::JuniorYieldBps)
+            .unwrap_or(DEFAULT_JUNIOR_YIELD_BPS)
     }
 
     /// Cash available to withdraw or lend: senior + junior assets minus capital out on invoices.
@@ -471,14 +667,23 @@ impl LiquidityPoolContract {
     }
 
     fn load_state(env: &Env) -> Result<PoolState, PoolError> {
-        env.storage().instance().get(&DataKey::State).ok_or(PoolError::NotInitialized)
+        env.storage()
+            .instance()
+            .get(&DataKey::State)
+            .ok_or(PoolError::NotInitialized)
     }
 
     fn extend_instance_ttl(env: &Env) {
-        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
     }
 
     fn extend_persistent_ttl(env: &Env, key: &DataKey) {
-        env.storage().persistent().extend_ttl(key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        env.storage().persistent().extend_ttl(
+            key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
     }
 }

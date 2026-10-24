@@ -1,4 +1,4 @@
-use invoice_registry::types::RiskTier;
+use crate::interfaces::RiskTier;
 use soroban_sdk::{contracttype, Address};
 
 #[contracttype]

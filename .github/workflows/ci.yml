@@ -10,14 +10,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set up Rust
-        uses: actions/setup-rust@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          rust-version: stable
-      - name: Install Rust components
-        run: rustup component add rustfmt clippy
+          targets: wasm32v1-none
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
       - name: Check formatting
-        run: cargo fmt -- --check
+        run: cargo fmt --all -- --check
       - name: Lint with clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -A clippy::inconsistent_digit_grouping -A clippy::too_many_arguments -D warnings
       - name: Run tests
         run: cargo test --workspace
+      - name: Build contract WASM
+        run: |
+          for c in invoice_registry liquidity_pool factoring_escrow; do
+            cargo rustc -p $c --crate-type cdylib --target wasm32v1-none --release
+          done
+          ls -la target/wasm32v1-none/release/*.wasm

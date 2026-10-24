@@ -130,7 +130,9 @@ fn setup<'a>() -> Ctx<'a> {
     let merchant = Address::generate(&env);
     let debtor = Address::generate(&env);
 
-    let usdc = env.register_stellar_asset_contract_v2(admin.clone()).address();
+    let usdc = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let usdc_admin = StellarAssetClient::new(&env, &usdc);
 
     let registry_id = env.register_contract(None, InvoiceRegistryContract);
@@ -149,7 +151,16 @@ fn setup<'a>() -> Ctx<'a> {
     usdc_admin.mint(&debtor, &100_000_0000000);
     pool.deposit(&lp_provider, &250_000_0000000);
 
-    Ctx { env, admin, verifier, merchant, debtor, usdc, registry, escrow }
+    Ctx {
+        env,
+        admin,
+        verifier,
+        merchant,
+        debtor,
+        usdc,
+        registry,
+        escrow,
+    }
 }
 
 fn verified_invoice(c: &Ctx, maturity: u64) -> u64 {
@@ -163,7 +174,8 @@ fn verified_invoice(c: &Ctx, maturity: u64) -> u64 {
         &String::from_str(&c.env, "INV-T"),
         &RiskTier::TierB,
     );
-    c.registry.verify_invoice(&c.verifier, &id, &RiskTier::TierB);
+    c.registry
+        .verify_invoice(&c.verifier, &id, &RiskTier::TierB);
     id
 }
 
@@ -205,7 +217,10 @@ fn test_update_rate_config_changes_quote_and_validates() {
     assert!(c.escrow.try_update_rate_config(&c.admin, &bad).is_err());
 
     let stranger = Address::generate(&c.env);
-    assert!(c.escrow.try_update_rate_config(&stranger, &new_rates).is_err());
+    assert!(c
+        .escrow
+        .try_update_rate_config(&stranger, &new_rates)
+        .is_err());
 }
 
 #[test]
@@ -231,7 +246,9 @@ fn test_factor_rejects_wrong_owner_and_double_factoring() {
 fn test_factor_rejects_expired_invoice() {
     let c = setup();
     let id = verified_invoice(&c, 1_700_000_000 + 100);
-    c.env.ledger().with_mut(|li| li.timestamp = 1_700_000_000 + 200);
+    c.env
+        .ledger()
+        .with_mut(|li| li.timestamp = 1_700_000_000 + 200);
     assert!(c.escrow.try_factor_invoice(&c.merchant, &id).is_err());
 }
 
@@ -251,7 +268,10 @@ fn test_default_requires_grace_period_and_admin() {
     assert!(c.escrow.try_mark_defaulted(&stranger, &id).is_err());
 
     c.escrow.mark_defaulted(&c.admin, &id);
-    assert_eq!(c.escrow.get_escrow_record(&id).status, EscrowStatus::Defaulted);
+    assert_eq!(
+        c.escrow.get_escrow_record(&id).status,
+        EscrowStatus::Defaulted
+    );
     assert_eq!(c.registry.get_invoice(&id).status, InvoiceStatus::Defaulted);
     assert_eq!(c.escrow.get_protocol_metrics().1, 0);
     assert!(c.escrow.try_settle_invoice(&c.debtor, &id).is_err());
@@ -260,7 +280,12 @@ fn test_default_requires_grace_period_and_admin() {
 #[test]
 fn test_calculate_discount_matches_spec() {
     let c = setup();
-    let q = c.escrow.calculate_discount(&1, &100_000_0000000i128, &RiskTier::TierA, &(1_700_000_000 + 86_400 * 73));
+    let q = c.escrow.calculate_discount(
+        &1,
+        &100_000_0000000i128,
+        &crate::interfaces::RiskTier::TierA,
+        &(1_700_000_000 + 86_400 * 73),
+    );
     assert_eq!(q.time_discount_amount, 1_200_0000000);
     assert_eq!(q.origination_fee_amount, 500_0000000);
     assert_eq!(q.net_payout, 98_300_0000000);

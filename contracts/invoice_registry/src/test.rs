@@ -140,12 +140,22 @@ fn test_debtor_and_merchant_cannot_verify_own_invoice() {
     );
 
     // Regression for F-1: debtor (chosen by the merchant) must not be able to verify.
-    assert!(client.try_verify_invoice(&debtor, &invoice_id, &RiskTier::TierA).is_err());
-    assert!(client.try_verify_invoice(&merchant, &invoice_id, &RiskTier::TierA).is_err());
-    assert_eq!(client.get_invoice(&invoice_id).status, InvoiceStatus::Issued);
+    assert!(client
+        .try_verify_invoice(&debtor, &invoice_id, &RiskTier::TierA)
+        .is_err());
+    assert!(client
+        .try_verify_invoice(&merchant, &invoice_id, &RiskTier::TierA)
+        .is_err());
+    assert_eq!(
+        client.get_invoice(&invoice_id).status,
+        InvoiceStatus::Issued
+    );
 
     // Admin and verifier still can.
     client.verify_invoice(&admin, &invoice_id, &RiskTier::TierB);
-    assert_eq!(client.get_invoice(&invoice_id).status, InvoiceStatus::Verified);
+    assert_eq!(
+        client.get_invoice(&invoice_id).status,
+        InvoiceStatus::Verified
+    );
     let _ = verifier;
 }
