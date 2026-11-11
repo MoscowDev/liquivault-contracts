@@ -22,6 +22,38 @@ pub struct InvoiceRegistryContract;
 #[contractimpl]
 impl InvoiceRegistryContract {
     /// Initializes the InvoiceRegistry contract with admin, verifier oracle, and authorized factoring escrow.
+    pub fn transfer_admin(
+        env: Env,
+        caller: Address,
+        new_admin: Address,
+    ) -> Result<(), RegistryError> {
+        caller.require_auth();
+        let mut config = Self::load_config(&env)?;
+        if caller != config.admin {
+            return Err(RegistryError::Unauthorized);
+        }
+        new_admin.require_auth();
+        config.admin = new_admin;
+        env.storage().instance().set(&DataKey::Config, &config);
+        Self::extend_instance_ttl(&env);
+        Ok(())
+    }
+
+    /// Admin-authorized upgrade; replacement WASM must preserve storage compatibility.
+    pub fn upgrade(
+        env: Env,
+        caller: Address,
+        wasm_hash: soroban_sdk::BytesN<32>,
+    ) -> Result<(), RegistryError> {
+        caller.require_auth();
+        let config = Self::load_config(&env)?;
+        if caller != config.admin {
+            return Err(RegistryError::Unauthorized);
+        }
+        env.deployer().update_current_contract_wasm(wasm_hash);
+        Ok(())
+    }
+
     pub fn initialize(
         env: Env,
         admin: Address,
@@ -286,7 +318,7 @@ impl InvoiceRegistryContract {
     pub fn mark_defaulted(env: Env, caller: Address, invoice_id: u64) -> Result<(), RegistryError> {
         caller.require_auth();
         let config = Self::load_config(&env)?;
-        if caller != config.factoring_escrow && caller != config.admin {
+        if caller != config.factoring_escrow {
             return Err(RegistryError::Unauthorized);
         }
 

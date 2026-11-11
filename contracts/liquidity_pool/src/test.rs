@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use crate::{LiquidityPoolContract, LiquidityPoolContractClient};
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::{Client as TokenClient, StellarAssetClient};
 use soroban_sdk::{Address, Env};
 
@@ -57,6 +57,7 @@ fn test_deposit_allocate_repay_and_yield_distribution() {
     assert_eq!(usdc_client.balance(&treasury), 200_0000000);
     assert_eq!(pool_client.get_share_price(), 10_180_000);
 
+    env.ledger().with_mut(|li| li.timestamp += 86_400);
     let redeemed1 = pool_client.withdraw(&lp1, &shares1);
     assert_eq!(redeemed1, 61_080_0000000);
 
@@ -89,6 +90,7 @@ fn test_set_paused_blocks_deposit_and_withdraw_and_requires_admin() {
     assert!(pool.try_withdraw(&lp, &shares).is_err());
 
     pool.set_paused(&admin, &false);
+    env.ledger().with_mut(|li| li.timestamp += 86_400);
     pool.withdraw(&lp, &shares);
 }
 
@@ -128,6 +130,7 @@ fn tranche_setup<'a>() -> Pool<'a> {
     pool.deposit(&senior_lp, &(60_000 * U));
     pool.deposit_junior(&junior_lp, &(20_000 * U));
 
+    env.ledger().with_mut(|li| li.timestamp += 86_400);
     Pool {
         env,
         admin,
@@ -145,12 +148,12 @@ fn test_junior_receives_share_of_yield() {
     let p = tranche_setup();
     p.pool
         .allocate_liquidity(&p.escrow, &p.merchant, &(40_000 * U));
-    // 2,000 gross yield -> 200 protocol cut -> 1,800 LP yield -> 30% junior (540), 70% senior (1,260).
+    // 2,000 gross yield -> 200 protocol cut -> 1,800 LP yield -> junior capital cap 25% (450), senior 75% (1,350).
     p.pool
         .repay_liquidity(&p.escrow, &p.payer, &(40_000 * U), &(2_000 * U));
 
-    assert_eq!(p.pool.get_junior_state().total_assets, 20_540 * U);
-    assert_eq!(p.pool.get_pool_state().total_assets, 61_260 * U);
+    assert_eq!(p.pool.get_junior_state().total_assets, 20_450 * U);
+    assert_eq!(p.pool.get_pool_state().total_assets, 61_350 * U);
     assert_eq!(p.pool.get_pool_state().cumulative_yield, 1_800 * U);
 }
 
@@ -236,7 +239,71 @@ fn test_set_junior_yield_bps_admin_only_and_capped() {
         .allocate_liquidity(&p.escrow, &p.merchant, &(40_000 * U));
     p.pool
         .repay_liquidity(&p.escrow, &p.payer, &(40_000 * U), &(2_000 * U));
-    // 1,800 LP yield, 50% to junior = 900.
-    assert_eq!(p.pool.get_junior_state().total_assets, 20_900 * U);
+    // Configured 50% is capped at the junior capital share (25%) = 450.
+    assert_eq!(p.pool.get_junior_state().total_assets, 20_450 * U);
     let _ = &p.senior_lp;
+}
+
+#[test]
+fn test_tiny_junior_deposit_cannot_capture_flat_yield() {
+    let p = tranche_setup();
+    let shares = p.pool.get_junior_position(&p.junior_lp).shares;
+    p.pool.withdraw_junior(&p.junior_lp, &shares);
+    p.pool.deposit_junior(&p.junior_lp, &U);
+    p.pool
+        .allocate_liquidity(&p.escrow, &p.merchant, &(40_000 * U));
+    p.pool
+        .repay_liquidity(&p.escrow, &p.payer, &(40_000 * U), &(2_000 * U));
+    assert_eq!(p.pool.get_junior_state().total_assets, U);
+}
+
+#[test]
+fn test_settlement_round_trip_is_locked_for_both_tranches() {
+    let p = tranche_setup();
+    p.pool.deposit(&p.senior_lp, &U);
+    p.pool.deposit_junior(&p.junior_lp, &U);
+    p.pool
+        .allocate_liquidity(&p.escrow, &p.merchant, &(40_000 * U));
+    p.pool
+        .repay_liquidity(&p.escrow, &p.payer, &(40_000 * U), &(2_000 * U));
+    assert_eq!(
+        p.pool.try_withdraw(&p.senior_lp, &U),
+        Err(Ok(crate::errors::PoolError::WithdrawalLocked))
+    );
+    assert_eq!(
+        p.pool.try_withdraw_junior(&p.junior_lp, &U),
+        Err(Ok(crate::errors::PoolError::WithdrawalLocked))
+    );
+    p.env.ledger().with_mut(|li| li.timestamp += 86_400);
+    p.pool.withdraw(&p.senior_lp, &U);
+    p.pool.withdraw_junior(&p.junior_lp, &U);
+}
+
+#[test]
+fn test_senior_wipeout_rejects_new_deposit_and_preview() {
+    let p = tranche_setup();
+    p.pool
+        .allocate_liquidity(&p.escrow, &p.merchant, &(80_000 * U));
+    p.pool.write_off_default(&p.escrow, &(80_000 * U));
+    assert_eq!(p.pool.get_share_price(), 0);
+    assert_eq!(
+        p.pool.try_deposit(&p.senior_lp, &U),
+        Err(Ok(crate::errors::PoolError::TrancheWipedOut))
+    );
+    assert_eq!(
+        p.pool.try_preview_deposit(&U),
+        Err(Ok(crate::errors::PoolError::TrancheWipedOut))
+    );
+}
+
+#[test]
+fn test_pool_admin_transfer_and_upgrade_authorization() {
+    let p = tranche_setup();
+    let new_admin = Address::generate(&p.env);
+    let hash = soroban_sdk::BytesN::from_array(&p.env, &[0; 32]);
+    assert!(p.pool.try_transfer_admin(&new_admin, &p.admin).is_err());
+    assert!(p.pool.try_upgrade(&new_admin, &hash).is_err());
+    p.pool.transfer_admin(&p.admin, &new_admin);
+    assert!(p.pool.try_set_paused(&p.admin, &true).is_err());
+    p.pool.set_paused(&new_admin, &true);
 }

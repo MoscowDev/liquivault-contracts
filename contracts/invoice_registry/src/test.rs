@@ -159,3 +159,39 @@ fn test_debtor_and_merchant_cannot_verify_own_invoice() {
     );
     let _ = verifier;
 }
+
+#[test]
+fn test_only_escrow_can_default_factored_invoice() {
+    let (env, client, admin, verifier, escrow, merchant, debtor, currency) = setup_env();
+    let id = client.mint_invoice(
+        &merchant,
+        &debtor,
+        &currency,
+        &1000,
+        &1_800_000_000,
+        &BytesN::from_array(&env, &[9; 32]),
+        &String::from_str(&env, "DEFAULT"),
+        &RiskTier::TierB,
+    );
+    client.verify_invoice(&verifier, &id, &RiskTier::TierB);
+    client.mark_factored(&escrow, &id);
+    assert_eq!(
+        client.try_mark_defaulted(&admin, &id),
+        Err(Ok(crate::errors::RegistryError::Unauthorized))
+    );
+    assert_eq!(client.get_invoice(&id).status, InvoiceStatus::Factored);
+    client.mark_defaulted(&escrow, &id);
+    assert_eq!(client.get_invoice(&id).status, InvoiceStatus::Defaulted);
+}
+
+#[test]
+fn test_registry_admin_transfer_and_upgrade_authorization() {
+    let (env, client, admin, _verifier, _escrow, merchant, _debtor, _currency) = setup_env();
+    assert!(client.try_transfer_admin(&merchant, &admin).is_err());
+    assert!(client
+        .try_upgrade(&merchant, &BytesN::from_array(&env, &[0; 32]))
+        .is_err());
+    client.transfer_admin(&admin, &merchant);
+    assert!(client.try_set_paused(&admin, &true).is_err());
+    client.set_paused(&merchant, &true);
+}

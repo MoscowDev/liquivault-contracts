@@ -12,6 +12,7 @@ use crate::types::{DataKey, JuniorState, LpPosition, PoolState};
 use soroban_sdk::{contract, contractimpl, token, Address, Env};
 
 const BPS_DENOMINATOR: i128 = 10_000;
+const WITHDRAWAL_LOCK_SECONDS: u64 = 86_400;
 const SHARE_PRICE_SCALE: i128 = 10_000_000;
 /// Default share of LP yield (after the protocol cut) paid to the junior tranche while it has capital.
 const DEFAULT_JUNIOR_YIELD_BPS: u32 = 3_000;
@@ -29,6 +30,34 @@ pub struct LiquidityPoolContract;
 
 #[contractimpl]
 impl LiquidityPoolContract {
+    pub fn transfer_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), PoolError> {
+        caller.require_auth();
+        let mut config = Self::load_state(&env)?;
+        if caller != config.admin {
+            return Err(PoolError::Unauthorized);
+        }
+        new_admin.require_auth();
+        config.admin = new_admin;
+        env.storage().instance().set(&DataKey::State, &config);
+        Self::extend_instance_ttl(&env);
+        Ok(())
+    }
+
+    /// Admin-authorized upgrade; replacement WASM must preserve storage compatibility.
+    pub fn upgrade(
+        env: Env,
+        caller: Address,
+        wasm_hash: soroban_sdk::BytesN<32>,
+    ) -> Result<(), PoolError> {
+        caller.require_auth();
+        let config = Self::load_state(&env)?;
+        if caller != config.admin {
+            return Err(PoolError::Unauthorized);
+        }
+        env.deployer().update_current_contract_wasm(wasm_hash);
+        Ok(())
+    }
+
     pub fn initialize(
         env: Env,
         admin: Address,
@@ -165,6 +194,14 @@ impl LiquidityPoolContract {
             .ok_or(PoolError::InsufficientShares)?;
         if position.shares < shares_to_burn {
             return Err(PoolError::InsufficientShares);
+        }
+        if env.ledger().timestamp()
+            < position
+                .last_deposit_timestamp
+                .checked_add(WITHDRAWAL_LOCK_SECONDS)
+                .ok_or(PoolError::ArithmeticOverflow)?
+        {
+            return Err(PoolError::WithdrawalLocked);
         }
         let usdc_to_return = Self::compute_assets_for_shares(
             shares_to_burn,
@@ -438,6 +475,14 @@ impl LiquidityPoolContract {
             return Err(PoolError::InsufficientShares);
         }
         let mut junior = Self::load_junior(&env);
+        if env.ledger().timestamp()
+            < position
+                .last_deposit_timestamp
+                .checked_add(WITHDRAWAL_LOCK_SECONDS)
+                .ok_or(PoolError::ArithmeticOverflow)?
+        {
+            return Err(PoolError::WithdrawalLocked);
+        }
         let usdc_to_return = Self::compute_assets_for_shares(
             shares_to_burn,
             junior.total_assets,
@@ -511,6 +556,10 @@ impl LiquidityPoolContract {
         Ok(())
     }
 
+    pub fn get_junior_yield_bps(env: Env) -> u32 {
+        Self::junior_yield_bps(&env)
+    }
+
     pub fn get_junior_state(env: Env) -> JuniorState {
         Self::load_junior(&env)
     }
@@ -529,7 +578,7 @@ impl LiquidityPoolContract {
 
     pub fn get_junior_share_price(env: Env) -> Result<i128, PoolError> {
         let junior = Self::load_junior(&env);
-        if junior.total_shares == 0 || junior.total_assets == 0 {
+        if junior.total_shares == 0 {
             return Ok(SHARE_PRICE_SCALE);
         }
         junior
@@ -558,7 +607,7 @@ impl LiquidityPoolContract {
 
     pub fn get_share_price(env: Env) -> Result<i128, PoolError> {
         let state = Self::load_state(&env)?;
-        if state.total_shares == 0 || state.total_assets == 0 {
+        if state.total_shares == 0 {
             return Ok(SHARE_PRICE_SCALE);
         }
         state
@@ -587,7 +636,10 @@ impl LiquidityPoolContract {
         if assets <= 0 {
             return Err(PoolError::InvalidAmount);
         }
-        if total_shares == 0 || total_assets == 0 {
+        if total_shares > 0 && total_assets == 0 {
+            return Err(PoolError::TrancheWipedOut);
+        }
+        if total_shares == 0 {
             return Ok(assets);
         }
         assets
@@ -646,7 +698,18 @@ impl LiquidityPoolContract {
         if junior.total_assets <= 0 {
             return Ok((0, lp_yield));
         }
-        let bps = Self::junior_yield_bps(env) as i128;
+        let senior = Self::load_state(env)?;
+        let total = senior
+            .total_assets
+            .checked_add(junior.total_assets)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+        // Never award a tiny first-loss deposit a fixed fraction of the entire pool's yield.
+        let capital_bps = junior
+            .total_assets
+            .checked_mul(BPS_DENOMINATOR)
+            .ok_or(PoolError::ArithmeticOverflow)?
+            / total;
+        let bps = (Self::junior_yield_bps(env) as i128).min(capital_bps);
         let junior_yield = lp_yield
             .checked_mul(bps)
             .ok_or(PoolError::ArithmeticOverflow)?

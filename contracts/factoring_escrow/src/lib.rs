@@ -25,6 +25,21 @@ pub struct FactoringEscrowContract;
 
 #[contractimpl]
 impl FactoringEscrowContract {
+    /// Admin-authorized upgrade; replacement WASM must preserve storage compatibility.
+    pub fn upgrade(
+        env: Env,
+        caller: Address,
+        wasm_hash: soroban_sdk::BytesN<32>,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        let config = Self::load_config(&env)?;
+        if caller != config.admin {
+            return Err(EscrowError::Unauthorized);
+        }
+        env.deployer().update_current_contract_wasm(wasm_hash);
+        Ok(())
+    }
+
     pub fn initialize(
         env: Env,
         admin: Address,
@@ -193,9 +208,6 @@ impl FactoringEscrowContract {
     ) -> Result<(i128, i128), EscrowError> {
         payer.require_auth();
         let config = Self::load_config(&env)?;
-        if config.paused {
-            return Err(EscrowError::ContractPaused);
-        }
 
         let mut escrow_record = Self::load_escrow(&env, invoice_id)?;
         if escrow_record.status != EscrowStatus::Active {
@@ -286,7 +298,7 @@ impl FactoringEscrowContract {
         Ok(())
     }
 
-    /// Admin-only circuit breaker. While paused, `factor_invoice` and `settle_invoice` are rejected.
+    /// Admin-only circuit breaker. While paused, new factoring is rejected; repayment and loss accounting remain available.
     pub fn set_paused(env: Env, admin: Address, paused: bool) -> Result<(), EscrowError> {
         let mut config = Self::require_admin(&env, &admin)?;
         config.paused = paused;

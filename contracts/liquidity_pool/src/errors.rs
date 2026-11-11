@@ -19,4 +19,5 @@ pub enum PoolError {
     TrancheWipedOut = 13,
     JuniorCoverageTooLow = 14,
     InvalidJuniorYieldBps = 15,
+    WithdrawalLocked = 16,
 }

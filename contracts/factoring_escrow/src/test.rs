@@ -180,7 +180,7 @@ fn verified_invoice(c: &Ctx, maturity: u64) -> u64 {
 }
 
 #[test]
-fn test_set_paused_blocks_factoring_and_settlement() {
+fn test_set_paused_blocks_factoring_but_allows_repayment() {
     let c = setup();
     let id = verified_invoice(&c, 1_700_000_000 + 86_400 * 30);
     c.escrow.set_paused(&c.admin, &true);
@@ -190,7 +190,7 @@ fn test_set_paused_blocks_factoring_and_settlement() {
     c.escrow.factor_invoice(&c.merchant, &id);
 
     c.escrow.set_paused(&c.admin, &true);
-    assert!(c.escrow.try_settle_invoice(&c.debtor, &id).is_err());
+    c.escrow.settle_invoice(&c.debtor, &id);
 }
 
 #[test]

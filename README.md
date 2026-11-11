@@ -85,3 +85,15 @@ done
 - [Contract Storage & TTL Lifecycle Policy](../docs/storage.md)
 - [Security Policy & Threat Model](../docs/SECURITY.md)
 - [Testnet Deployment Runbook](../docs/deployment.md)
+
+
+## Security changes after the recorded deployment
+
+The recorded testnet deployment predates these changes. Redeploy all three contracts and update SDK/frontend addresses; the historical WASM has no upgrade function.
+
+- Junior yield is the lesser of the configured yield bps and junior assets / total tranche assets. Rounding floors to bps, so dust capital cannot earn a fixed allocation.
+- Deposits in either tranche reset that provider's withdrawal lock for the tranche to 24 hours. This prevents immediate deposit/settlement/withdrawal round trips, with the tradeoff of locking existing shares on a top-up. It does not completely eliminate settlement timing incentives.
+- A wiped-out tranche with outstanding shares rejects new deposits and deposit previews, preventing stale-share dilution. There is no automatic recapitalization/reset mechanism; migrate to a fresh pool after a total wipeout.
+- Only escrow can mark registry invoices defaulted, preserving atomic loss accounting.
+- Escrow pause blocks new factoring while permitting repayments and authorized defaults.
+- All contracts support administrator-authorized code upgrades; replacement WASM must preserve storage compatibility. Pool and registry now support administrator transfer requiring both current and new administrator authorization. Upgrades trust the administrator and do not include a timelock or migration engine.
