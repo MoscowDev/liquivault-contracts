@@ -1,33 +1,15 @@
-# Contributor Covenant Code of Conduct
+# Code of conduct
 
-## Our Pledge
+LiquiVault welcomes respectful participation regardless of identity, background, experience or ability. Treat contributors with empathy, keep criticism focused on the work, respect differing viewpoints and accept constructive feedback.
 
-We as members, contributors, and leaders pledge to make participation in our community a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, caste, color, religion, or sexual identity and orientation.
+Harassment, threats, discriminatory or sexualized conduct, personal attacks, disclosure of private information without consent and deliberate disruption are unacceptable. These standards apply to repository issues, PRs, discussions and conduct while representing the project.
 
-We pledge to act and interact in ways that contribute to an open, welcoming, diverse, inclusive, and healthy community.
+## Reporting and enforcement
 
-## Our Standards
+The repository owner, [MoscowDev](https://github.com/MoscowDev), is the current maintainer. Use GitHub's report-abuse tools for harassment or threats. If a private maintainer channel is needed, request one without posting sensitive incident details publicly. No unverified project email address or guaranteed response time is advertised.
 
-Examples of behavior that contributes to a positive environment for our community include:
-
-* Demonstrating empathy and kindness toward other people
-* Being respectful of differing opinions, viewpoints, and experiences
-* Giving and gracefully accepting constructive feedback
-* Accepting responsibility and apologizing to those affected by our mistakes, and learning from the experience
-* Focusing on what is best not just for us as individuals, but for the overall community
-
-Examples of unacceptable behavior include:
-
-* The use of sexualized language or imagery, and sexual attention or advances of any kind
-* Trolling, insulting or derogatory comments, and personal or political attacks
-* Public or private harassment
-* Publishing others' private information, such as a physical or email address, without their explicit permission
-* Other conduct which could reasonably be considered inappropriate in a professional setting
-
-## Enforcement
-
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project maintainers via GitHub Issues or repository discussions. All complaints will be reviewed and investigated promptly and fairly.
+Maintainers may remove harmful content, warn participants, limit interaction or exclude repeat offenders. Decisions should be proportionate, explainable where appropriate and respectful of reporters' privacy. Vulnerabilities follow the [security policy](SECURITY.md) rather than a public conduct report.
 
 ## Attribution
 
-This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org), version 2.1.
+Adapted from the values of the [Contributor Covenant 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct.html). This concise project policy does not claim an independent enforcement team.

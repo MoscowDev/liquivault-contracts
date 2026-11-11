@@ -4,11 +4,21 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check documentation
+        run: node scripts/check-docs.mjs
+      - name: Validate public deployment evidence
+        run: node scripts/verify-deployment.mjs
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -27,3 +37,10 @@ jobs:
             cargo rustc -p $c --crate-type cdylib --target wasm32v1-none --release
           done
           ls -la target/wasm32v1-none/release/*.wasm
+      - name: Retain reviewable WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: liquivault-contract-wasm
+          path: target/wasm32v1-none/release/*.wasm
+          if-no-files-found: error
+          retention-days: 30
