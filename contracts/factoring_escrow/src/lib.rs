@@ -6,6 +6,8 @@ pub mod interfaces;
 pub mod types;
 
 #[cfg(test)]
+mod assurance;
+#[cfg(test)]
 mod test;
 
 use crate::errors::EscrowError;

@@ -7,6 +7,8 @@ Three experimental Soroban contracts for invoice factoring: `invoice_registry`, 
 
 ## Build and test
 
+The assurance suite runs with `cargo test -p factoring_escrow assurance --locked`. A fixed seed (`0x4c49515549564155`) generates 4,096 quote configurations across all three risk tiers, checking conservation, rounding and monotonicity. Additional tests cover expiry/configuration/overflow boundaries and registry/escrow wire round trips. Pool tests exercise 32 generated default allocations and verify first-loss order, total-asset conservation and token balances. Host authorization remains mocked where the test explicitly enables it; this is not an independent audit or network archival test.
+
 Use a current Rust toolchain and install the target:
 
 ```sh

@@ -5,6 +5,52 @@ use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::{Client as TokenClient, StellarAssetClient};
 use soroban_sdk::{Address, Env};
 
+#[test]
+fn generated_default_losses_conserve_assets_and_idle_tokens() {
+    for seed in 1..=32i128 {
+        let mut env = Env::default();
+        env.set_config(soroban_sdk::testutils::EnvTestConfig {
+            capture_snapshot_at_drop: false,
+        });
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let escrow = Address::generate(&env);
+        let treasury = Address::generate(&env);
+        let provider = Address::generate(&env);
+        let merchant = Address::generate(&env);
+        let (token, balances, issuer) = create_usdc_token(&env, &admin);
+        let pool_id = env.register_contract(None, LiquidityPoolContract);
+        let pool = LiquidityPoolContractClient::new(&env, &pool_id);
+        pool.initialize(&admin, &token, &escrow, &treasury, &1000);
+        let senior = seed * 997 + 1;
+        let junior = seed * 137 + 1;
+        issuer.mint(&provider, &(senior + junior));
+        pool.deposit(&provider, &senior);
+        pool.deposit_junior(&provider, &junior);
+        let deployed = match seed % 3 {
+            0 => junior,
+            1 => junior / 2 + 1,
+            _ => junior + senior / 2,
+        };
+        pool.allocate_liquidity(&escrow, &merchant, &deployed);
+        pool.write_off_default(&escrow, &deployed);
+        let state = pool.get_pool_state();
+        let first_loss = pool.get_junior_state();
+        assert_eq!(state.deployed_capital, 0);
+        assert_eq!(first_loss.total_assets, junior - deployed.min(junior));
+        assert_eq!(state.total_assets, senior - (deployed - junior).max(0));
+        assert_eq!(
+            state.total_assets + first_loss.total_assets,
+            senior + junior - deployed
+        );
+        assert_eq!(
+            balances.balance(&pool_id),
+            state.total_assets + first_loss.total_assets
+        );
+        assert_eq!(balances.balance(&merchant), deployed);
+    }
+}
+
 fn create_usdc_token<'a>(
     env: &Env,
     admin: &Address,

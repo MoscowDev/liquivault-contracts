@@ -16,9 +16,9 @@ pub enum RiskTier {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum InvoiceStatus {
-    /// Newly minted by a merchant, awaiting debtor/oracle verification
+    /// Newly minted by a merchant, awaiting configured verifier/admin approval
     Issued = 0,
-    /// Verified by debtor or authorized oracle, eligible for factoring
+    /// Approved by the configured verifier or admin, eligible for factoring
     Verified = 1,
     /// Factored via FactoringEscrow, ownership locked in escrow
     Factored = 2,
