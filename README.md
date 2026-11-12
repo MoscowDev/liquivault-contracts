@@ -49,6 +49,8 @@ Exact argument names/order and types are in each `src/lib.rs` and `src/types.rs`
 
 ## Deployment evidence
 
+For an isolated signed localhost lifecycle, see [local integration](docs-local-integration.md). The `--local` runner preserves public testnet evidence and uses generated local-network identities. Actual network archival/restoration remains unverified.
+
 [deployments/testnet.json](deployments/testnet.json) is the current public record. Historical records are explicitly dated. A deployment record is evidence only for its source/WASM identifiers; the October deployment does not contain the later repairs.
 
 For a fresh signed demonstration use `node scripts/deploy-testnet.mjs` with Node.js 22.13+ and Stellar CLI 28.1+. The runner builds current WASM, uses isolated testnet identities, checkpoints progress, verifies the invoice lifecycle and accounting, and writes the public record only after all assertions pass. See the [shared deployment guide](https://github.com/MoscowDev/LiquiVault/blob/main/docs/deployment.md). Never commit local `.stellar/` configuration or secret keys.

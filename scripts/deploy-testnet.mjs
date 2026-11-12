@@ -15,8 +15,10 @@ const config = join(runDir, 'config');
 mkdirSync(config, { recursive: true });
 const checkpoint = join(runDir, 'progress.json');
 const progress = existsSync(checkpoint) ? JSON.parse(readFileSync(checkpoint, 'utf8')) : { runId, steps: {}, transactions: [] };
-const rpcUrl = 'https://soroban-testnet.stellar.org';
-const horizonUrl = 'https://horizon-testnet.stellar.org';
+const local = process.argv.includes('--local');
+const network = local ? 'liquivault-local' : 'testnet';
+const rpcUrl = local ? 'http://127.0.0.1:18000/rpc' : 'https://soroban-testnet.stellar.org';
+const horizonUrl = local ? 'http://127.0.0.1:18000' : 'https://horizon-testnet.stellar.org';
 const cli = process.env.STELLAR ?? 'stellar';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const save = () => writeFileSync(checkpoint, JSON.stringify(progress, null, 2) + '\n');
@@ -30,7 +32,10 @@ function execute(command, args, allowFailure = false) {
   }
   return { stdout: (result.stdout ?? '').trim(), stderr: result.stderr ?? '', status: result.status };
 }
-function stellar(args) { return execute(cli, ['--config-dir', config, ...args]); }
+function stellar(args) {
+  const selected = args.map((arg, index) => index > 0 && args[index - 1] === '--network' && arg === 'testnet' ? network : arg);
+  return execute(cli, ['--config-dir', config, ...selected]);
+}
 function parse(value) { try { return JSON.parse(value); } catch { return value; } }
 async function jsonFetch(url, options) {
   const response = await fetch(url, { ...options, signal: AbortSignal.timeout(30000) });
@@ -59,7 +64,7 @@ async function step(name, action, source) {
   const previousHash = source ? (await latestTx(source))?.hash : undefined;
   progress.inFlight = { name, source, previousHash, startedAt: new Date().toISOString() };
   save();
-  const output = action();
+  const output = await action();
   const transaction = source ? await confirmedTx(source, previousHash) : undefined;
   const value = parse(output.stdout);
   if (transaction) progress.transactions.push({ step: name, ...transaction });
@@ -93,11 +98,15 @@ for (const name of ['invoice_registry', 'liquidity_pool', 'factoring_escrow']) {
   execute('cargo', ['rustc', '-p', name, '--crate-type', 'cdylib', '--target', 'wasm32v1-none', '--release', '--locked']);
 }
 const accounts = {};
+if (local) stellar(['network', 'add', network, '--rpc-url', rpcUrl, '--network-passphrase', 'Standalone Network ; February 2017']);
+if (progress.network && progress.network !== network) throw new Error('Checkpoint belongs to a different network; use a new run ID.');
+progress.network = network;
+save();
 for (const alias of ['admin', 'verifier', 'treasury', 'merchant', 'debtor', 'lp']) {
   const existing = execute(cli, ['--config-dir', config, 'keys', 'address', alias], true);
   if (existing.status !== 0) stellar(['keys', 'generate', alias, '--network', 'testnet']);
   accounts[alias] = stellar(['keys', 'address', alias]).stdout.trim();
-  await step(`fund-${alias}`, () => stellar(['keys', 'fund', alias, '--network', 'testnet']));
+  await step(`fund-${alias}`, () => local ? jsonFetch(`${horizonUrl}/friendbot?addr=${accounts[alias]}`).then(() => ({ stdout: 'funded' })) : stellar(['keys', 'fund', alias, '--network', 'testnet']));
 }
 const asset = `LVTEST:${accounts.admin}`;
 const token = stellar(['contract', 'id', 'asset', '--asset', asset, '--network', 'testnet']).stdout.trim();
@@ -149,7 +158,7 @@ assert.equal(BigInt(junior.total_assets), 200000000000n + juniorYield);
 assert.equal(BigInt(read(contracts.liquidityPool, 'get_junior_yield_bps')), 3000n);
 
 const record = {
-  network: 'testnet', deployedAt: new Date().toISOString(), runId,
+  network: local ? 'standalone' : 'testnet', deployedAt: new Date().toISOString(), runId,
   provenance: { contractSourceCommit: execute('git', ['log', '-1', '--format=%H', '--', 'contracts', 'Cargo.toml', 'Cargo.lock']).stdout,
     sourceDigest, sourceFiles, wasmSha256: wasmHashes, stellarCli: execute(cli, ['--version']).stdout,
     rust: execute('rustc', ['--version']).stdout },
@@ -160,12 +169,12 @@ const record = {
     settlement_lpYield_protocolCut: settlement, invoiceAfterSettlement: invoice, poolState: pool, juniorState: junior,
     effectiveJuniorYieldBps: Number(juniorBps), assertionsPassed: true }
 };
-const output = join(root, 'deployments', 'testnet.json');
+const output = local ? join(runDir, 'deployment.json') : join(root, 'deployments', 'testnet.json');
 mkdirSync(dirname(output), { recursive: true });
-if (existsSync(output)) {
+if (!local && existsSync(output)) {
   const old = JSON.parse(readFileSync(output, 'utf8'));
   const history = join(root, 'deployments', `testnet-${old.deployedAt.slice(0, 10)}.json`);
   if (!existsSync(history)) writeFileSync(history, JSON.stringify(old, null, 2) + '\n');
 }
 writeFileSync(output, JSON.stringify(record, null, 2) + '\n');
-console.log(`Verified signed testnet proof: ${output}`);
+console.log(`Verified signed ${local ? 'standalone' : 'testnet'} proof: ${output}`);
