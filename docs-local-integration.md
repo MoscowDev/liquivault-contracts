@@ -23,4 +23,22 @@ docker stop liquivault-local-check
 
 ## Archival finding
 
-An experimental Core `MANUAL_CLOSE` / `RUN_STANDALONE` jump beyond the instance and position TTLs did not produce a ledger stream that the bundled RPC ingested. The recovery attempt stopped before signing or submitting a withdrawal. Do not describe the local lifecycle as an archival/restoration success, and do not use a ledger-sequence jump as a verified recovery recipe. A recovery harness must retain continuous RPC ingestion and demonstrate expired entries, the actual restoration footprint and a confirmed subsequent operation. That work remains open.
+### Verified replacement: continuous-ingestion fixture
+
+The recovery integration now passes from three fresh local networks, including a rerun on 13 November 2026. With a built sibling SDK and Docker, Node.js, Rust/WASM and Stellar CLI installed, run this explicitly from the contracts checkout:
+
+```sh
+node scripts/run-archival-fixture.mjs unique-recovery-run-id
+```
+
+The runner pins `stellar/quickstart@sha256:4c8bad1ef7341205b898f83d9489321da80c7bd74183100fc8e2a39a5938c7d5`, uses Protocol 28 (matching the image's supported RPC hosts), waits for a healthy RPC and successful deployment simulation, seeds the lifecycle, waits for natural expiry, and runs the sibling SDK's `examples/archival-recovery.mjs`. It binds only localhost port 18000 and refuses to replace a network already there. It stops only its own container in cleanup; generated evidence and test identities remain in ignored `.stellar/archival/<run-id>/`.
+
+This is an **instrumented fixture**, not production WASM. `prepare-archival-fixture.mjs` copies sources into an ignored workspace and changes only TTL thresholds/targets and the withdrawal-lock constant, recording every patch. Network persistence is 256 ledgers; thresholds are 32, extension targets 256, and the fixture withdrawal lock is one second. Canonical contract sources and public testnet records are unchanged. The evidence distinguishes the base source commit from instrumented source/WASM hashes.
+
+Success requires observed expiry of both pool instance and LP position, restoration keys for both, rejected signing that leaves them expired, a confirmed withdrawal that restores both, zero remaining senior shares and an exact token-balance delta. Current RPC can return expired entries with `liveUntilLedgerSeq: 0`; absence from the response is not required. The local recovery receipt records the hash **before submission** and refuses automatic replay of an uncertain write.
+
+The [published receipts and scope](https://github.com/MoscowDev/LiquiVault/blob/main/docs/gates/README.md) document the verified results. They are not public-testnet transactions, a production timing test, manual-recovery coverage, or independent-person validation.
+
+### Earlier failed approach
+
+An experimental Core `MANUAL_CLOSE` / `RUN_STANDALONE` jump beyond the instance and position TTLs did not produce a ledger stream that the bundled RPC ingested. That attempt stopped before signing or submitting a withdrawal. Do not use a ledger-sequence jump as a verified recovery recipe. The continuous-ingestion fixture above supersedes this failed approach.

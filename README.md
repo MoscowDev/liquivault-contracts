@@ -49,7 +49,7 @@ Exact argument names/order and types are in each `src/lib.rs` and `src/types.rs`
 
 ## Deployment evidence
 
-For an isolated signed localhost lifecycle, see [local integration](docs-local-integration.md). The `--local` runner preserves public testnet evidence and uses generated local-network identities. Actual network archival/restoration remains unverified.
+For an isolated signed localhost lifecycle and the separately instrumented archival/recovery harness, see [local integration](docs-local-integration.md). The normal `--local` runner preserves public testnet evidence and uses generated local-network identities. The recovery fixture passed natural expiry, rejected signing, automatic restoration and withdrawal on a local network with documented timing overrides; it does not establish production timing or manual-fallback behavior.
 
 [deployments/testnet.json](deployments/testnet.json) is the current public record. Historical records are explicitly dated. A deployment record is evidence only for its source/WASM identifiers; the October deployment does not contain the later repairs.
 
